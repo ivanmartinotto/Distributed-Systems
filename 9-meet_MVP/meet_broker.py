@@ -1,29 +1,39 @@
 import zmq
 import threading
 
-context = zmq.Context()
 
-# channel 1 - video
-xsub, xpub = context.socket(zmq.XSUB), context.socket(zmq.XPUB)
-xsub.bind("tcp://*:5555")
-xpub.bind("tcp://*:5556")
+def start_channel(ctx, pub_port, sub_port, name):
+    # create a XPUB/XSUB proxy to forward messages from publishers to subscribers
+    frontend = ctx.socket(zmq.XSUB)   # receive from the PUBs
+    frontend.bind(f"tcp://*:{pub_port}")
 
-# channel 2 - audio
-xsub2, xpub2 = context.socket(zmq.XSUB), context.socket(zmq.XPUB)
-xsub2.bind("tcp://*:5557")
-xpub2.bind("tcp://*:5558")
+    backend = ctx.socket(zmq.XPUB)    # send to the SUBs
+    backend.bind(f"tcp://*:{sub_port}")
 
-# channel 3 - text
-xsub3, xpub3 = context.socket(zmq.XSUB), context.socket(zmq.XPUB)
-xsub3.bind("tcp://*:5559")
-xpub3.bind("tcp://*:5560")
+    # HWM for non acumulating messages when subscribers are slow or disconnected
+    frontend.setsockopt(zmq.RCVHWM, 10)
+    backend.setsockopt(zmq.SNDHWM, 10)
 
-# start the proxy in separate threads for non-blocking behavior
-threading.Thread(target=zmq.proxy, args=(xsub, xpub), daemon=True).start()
-threading.Thread(target=zmq.proxy, args=(xsub2, xpub2), daemon=True).start()
-threading.Thread(target=zmq.proxy, args=(xsub3, xpub3), daemon=True).start()
+    t = threading.Thread(
+        target=zmq.proxy, args=(frontend, backend), daemon=True, name=f"proxy-{name}"
+    )
+    t.start()
+    return t
 
-try:
-    threading.Event().wait()
-except KeyboardInterrupt:
-    print("Broker shutting down...")
+
+def main():
+    ctx = zmq.Context.instance()
+    start_channel(ctx, 5555, 5556, "video")
+    start_channel(ctx, 5557, 5558, "audio")
+    start_channel(ctx, 5559, 5560, "text")
+
+    print("[broker] on. Ctrl+C to stop.")
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        print("\n[broker] stopping...")
+        ctx.term()
+
+
+if __name__ == "__main__":
+    main()
