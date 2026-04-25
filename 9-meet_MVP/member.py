@@ -4,7 +4,7 @@ import numpy as np
 import sounddevice as sd
 import threading
 import sys
-from queue import Queue
+from queue import Queue, Full, Empty
 
 member_id = sys.argv[1] if len(sys.argv) > 1 else "1"
 
@@ -39,17 +39,21 @@ def main_thread():
         try:
             frame = video_render_queue.get_nowait()
             cv.imshow(f"Member {member_id} - Video", frame)
-        except: pass
+        except Empty:
+            pass
         try:
             chunk = audio_render_queue.get_nowait()
             try:
                 sd.play(np.frombuffer(chunk, dtype=np.int16), samplerate=16000)
-            except sd.PortAudioError: pass
-        except: pass
+            except sd.PortAudioError:
+                pass
+        except Empty:
+            pass
         try:
             msg = text_render_queue.get_nowait()
             print(f"[Member {member_id}] Received: {msg}")
-        except: pass
+        except Empty:
+            pass
         if cv.waitKey(1) & 0xFF == ord('b'):
             break
 
@@ -57,17 +61,38 @@ def receive_video():
     while True:
         msg = video_sub.recv_multipart()
         frame = cv.imdecode(np.frombuffer(msg[1], dtype=np.uint8), cv.IMREAD_COLOR)
-        video_render_queue.put_nowait(frame)
+        try:
+            video_render_queue.put_nowait(frame)
+        except Full:
+            try:
+                video_render_queue.get_nowait()
+            except Empty:
+                pass
+            video_render_queue.put_nowait(frame)
 
 def receive_audio():
     while True:
         msg = audio_sub.recv_multipart()
-        audio_render_queue.put_nowait(msg[1])
+        try:
+            audio_render_queue.put_nowait(msg[1])
+        except Full:
+            try:
+                audio_render_queue.get_nowait()
+            except Empty:
+                pass
+            audio_render_queue.put_nowait(msg[1])
 
 def receive_text():
     while True:
         msg = text_sub.recv_multipart()
-        text_render_queue.put_nowait(msg[1].decode('utf-8'))
+        try:
+            text_render_queue.put_nowait(msg[1].decode('utf-8'))
+        except Full:
+            try:
+                text_render_queue.get_nowait()
+            except Empty:
+                pass
+            text_render_queue.put_nowait(msg[1].decode('utf-8'))
 
 def send_video():
     cap = cv.VideoCapture(0)
