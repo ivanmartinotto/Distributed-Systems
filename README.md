@@ -22,6 +22,7 @@ This repository contains 9 progressive examples, each building on the previous t
 7. **Video over ZMQ** (7-video-zmq/): Streaming video frames from webcam using ZMQ.
 8. **Audio over ZMQ** (8-audio-zmq/): Streaming audio data using ZMQ.
 9. **Meet MVP** (9-meet_MVP/): A meeting system MVP with multiple participants.
+10. **Meet Expansion** (10-expansion/): An expanded version of the meeting system with multiple brokers, dynamic discovery and failover proof.
 
 ## How to Run
 
