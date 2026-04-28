@@ -22,7 +22,7 @@ try:
     b2 = start("B2", ["broker.py", "--id", "B2", "--base-port", "5575"])
     time.sleep(2)
     start("Ivan", ["member.py", "--id", "Ivan", "--room", "A"])
-    start("Anna", ["member.py", "--id", "Anna", "--room", "A"])
+    start("Samuel", ["member.py", "--id", "Samuel", "--room", "A"])
     start("Fuji", ["member.py", "--id", "Fuji", "--room", "A"])
 
     input("\nPressione ENTER para matar B1 (failover demo)...")
