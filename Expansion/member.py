@@ -16,10 +16,12 @@ from common import ROOMS, PRESENCE_INTERVAL, DISCOVERY_PORT, CMD_LIST, channel_p
 parser = argparse.ArgumentParser()
 parser.add_argument("--id", default=uuid.uuid4().hex[:6])
 parser.add_argument("--room", default="A", choices=ROOMS)
+parser.add_argument("--discovery", default=f"tcp://localhost:{DISCOVERY_PORT}", help="endereço do discovery (ex: tcp://192.168.0.155:5570)")
 args = parser.parse_args()
 
 member_id = args.id
 my_room = args.room
+discovery_addr = args.discovery
 
 online_members = set()       # quem está na sala
 online_lock = threading.Lock()
