@@ -17,7 +17,7 @@ Protocol (REQ/REP, JSON):
 
 Usage:
   python discovery.py
-  python discovery.py --port 5570
+  python discovery.py --port 5570 --bind 0.0.0.0
 """
 
 import argparse
@@ -30,6 +30,7 @@ import zmq
 from common import (
     DISCOVERY_PORT, BROKER_TIMEOUT,
     CMD_REGISTER, CMD_HEARTBEAT, CMD_LIST, CMD_UNREGISTER,
+    detect_radmin_ip,
 )
 
 
@@ -100,7 +101,6 @@ def handle(req, registry):
 
     if cmd == CMD_HEARTBEAT:
         ok = registry.heartbeat(req["id"])
-        # If unknown, signal to the broker to re-register
         return {"ok": ok, "need_register": not ok}
 
     if cmd == CMD_UNREGISTER:
@@ -116,12 +116,18 @@ def handle(req, registry):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=DISCOVERY_PORT)
+    parser.add_argument("--bind", default="*",
+                        help="interface to bind on (default: * = all)")
     args = parser.parse_args()
 
     ctx = zmq.Context.instance()
     rep = ctx.socket(zmq.REP)
-    rep.bind(f"tcp://*:{args.port}")
-    print(f"[discovery] listening on tcp://*:{args.port}")
+    rep.bind(f"tcp://{args.bind}:{args.port}")
+
+    advertised = detect_radmin_ip()
+    print(f"[discovery] listening on tcp://{args.bind}:{args.port}")
+    print(f"[discovery] advertised IP (RADMIN auto-detect): {advertised}")
+    print(f"[discovery] remote PCs connect with: --discovery tcp://{advertised}:{args.port}")
 
     registry = Registry()
     stop = threading.Event()
