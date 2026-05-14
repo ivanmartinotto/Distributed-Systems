@@ -183,6 +183,8 @@ class Conn:
 
         with online_lock:
             online_members.clear()
+        with latest_video_lock:
+            latest_video_frames.clear()
 
         time.sleep(0.3)
 
@@ -314,7 +316,11 @@ def drain_pending_for_room(room, timeout=1.0):
 # ----- Connection bootstrap -----
 # Queues must exist before swap() because swap triggers history fetch
 # which enqueues into text_render_queue.
-video_render_queue = Queue(200)
+# Video uses a per-sender latest-frame dict (not a queue) so we always
+# render the newest frame per participant and never accumulate latency.
+latest_video_frames = {}
+latest_video_lock = threading.Lock()
+shown_video_windows = set()
 audio_render_queue = Queue(100)
 text_render_queue = Queue(500)
 
@@ -367,11 +373,19 @@ def watchdog(conn, discovery_addr, stop_event):
 def main_thread():
     global muted
     while True:
-        try:
-            frame = video_render_queue.get_nowait()
-            cv.imshow(f"Member {member_id} - Video", frame)
-        except Empty:
-            pass
+        with latest_video_lock:
+            snapshot = dict(latest_video_frames)
+        for sender_id, frame in snapshot.items():
+            win = f"Member {sender_id}"
+            cv.imshow(win, frame)
+            shown_video_windows.add(win)
+        # Close windows for senders that disappeared (left room / went offline).
+        stale = [w for w in shown_video_windows
+                 if w.removeprefix("Member ") not in snapshot]
+        for w in stale:
+            try: cv.destroyWindow(w)
+            except Exception: pass
+            shown_video_windows.discard(w)
         try:
             msg = text_render_queue.get_nowait()
             sender, content = msg.split(":", 1)
@@ -405,12 +419,8 @@ def receive_video():
         frame = cv.imdecode(np.frombuffer(msg[1], dtype=np.uint8), cv.IMREAD_COLOR)
         if frame is None:
             continue
-        try:
-            video_render_queue.put_nowait(frame)
-        except Full:
-            try: video_render_queue.get_nowait()
-            except Empty: pass
-            video_render_queue.put_nowait(frame)
+        with latest_video_lock:
+            latest_video_frames[sender_id] = frame
 
 
 def receive_audio():
@@ -621,6 +631,8 @@ def send_text():
 
             with online_lock:
                 online_members.clear()
+            with latest_video_lock:
+                latest_video_frames.clear()
             conn.room = new_room
             print(f"[client] moved to room {new_room}")
 
@@ -682,6 +694,8 @@ def receive_presence():
                 if sender_id in online_members:
                     online_members.discard(sender_id)
                     last_seen.pop(sender_id, None)
+                    with latest_video_lock:
+                        latest_video_frames.pop(sender_id, None)
                     print(f"[room {conn.room}] {sender_id} left")
             elif action == "WHOIS":
                 reply = make_topic("presence", conn.broker_id, conn.room, member_id).encode()
@@ -695,6 +709,8 @@ def receive_presence():
             for u in stale:
                 online_members.discard(u)
                 last_seen.pop(u, None)
+                with latest_video_lock:
+                    latest_video_frames.pop(u, None)
                 print(f"[room {conn.room}] {u} left (timeout)")
 
 
